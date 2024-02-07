@@ -1,5 +1,7 @@
 ---
 title: "Lab 05 - Data Wrangling"
+author: "Ella Hugie"
+always_allow_html: true
 output: 
   github_document: default
   tufte::tufte_html:
@@ -94,15 +96,32 @@ Once you are done setting up the project, you can now start working with the MET
 
 1. Load the `data.table` (and the `dtplyr` and `dplyr` packages if you plan to work with those).
 
-```{r echo=TRUE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 library("data.table")
+library("leaflet")
 fn <- "https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz"
 if (!file.exists("E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz"))
   download.file(fn, destfile = "E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz")
 met <- data.table::fread("met_all_2023.gz")
 ```
 
+
 2. Load the met data from https://github.com/JSC370/JSC370-2024/main/data/met_all_2023.gz or  (Use https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz to download programmatically), and also the station data. For the latter, you can use the code we used during lecture to pre-process the stations data:
+
+```{r message=FALSE, warning=FALSE}
+download.file(
+  "https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz",
+  destfile = "met_all_2023.gz",
+  method   = "curl",
+  timeout  = 60
+  )
+
+met <- data.table::fread("met_all_2023.gz")
+met$lat <- met$lat / 1000
+met$lon <- met$lon / 1000
+```
+
+
 
 ```{r stations-data, echo=TRUE, message=FALSE, warning=FALSE}
 
@@ -187,6 +206,7 @@ median_stations <- met[, .SD[which.min(abs(euclidean_distance - median(euclidean
 
 # if a tie, select the one with the lowest latitude
 most_representative_stations <- median_stations[, .SD[which.min(lat)], by = STATE]
+most_representative_stations <- most_representative_stations[, .(USAFID, WBAN, STATE, lat, lon)]
 
 head(most_representative_stations)
 ```
@@ -198,7 +218,52 @@ Knit the doc and save it on GitHub.
 For each state, identify what is the station that is closest to the mid-point of the state. Combining these with the stations you identified in the previous question, use `leaflet()` to visualize all ~100 points in the same figure, applying different colors for those identified in this question.
 
 ```{r}
+# converting lat and lon columns to numeric
+met$lat <- as.numeric(met$lat)
+met$lon <- as.numeric(met$lon)
 
+# removing na rows
+met <- met[!is.na(met$lat) & !is.na(met$lon), ]
+```
+
+
+```{r}
+# calculating midpoint of each state
+midpoints <- met[, .(mid_lat = mean(lat), mid_lon = mean(lon)), by = STATE]
+
+euclidean_distance <- function(lat1, lon1, lat2, lon2) {
+  sqrt((lat1 - lat2)^2 + (lon1 - lon2)^2)
+}
+
+# finding closest station to the midpoint
+find_closest_station <- function(mid_lat, mid_lon, stations) {
+  distances <- euclidean_distance(stations$lat, stations$lon, mid_lat, mid_lon)
+  closest_index <- which.min(distances)
+  closest_station <- stations[closest_index, ]
+  return(closest_station)
+}
+
+closest_stations <- lapply(1:nrow(midpoints), function(i) {
+  state_midpoint <- midpoints[i, ]
+  state_code <- state_midpoint$STATE
+  state_stations <- met[STATE == state_code]
+  closest_station <- find_closest_station(state_midpoint$mid_lat, state_midpoint$mid_lon, state_stations)
+  return(closest_station[, .(USAFID, WBAN, STATE, lat, lon)])  # Select only the columns you need
+})
+
+# combine midpoint stations with previously identified stations
+all_stations <- rbind(most_representative_stations, do.call(rbind, closest_stations))
+
+map <- leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(data = all_stations, 
+                   lat = ~lat, 
+                   lng = ~lon,
+                   color = ifelse(all_stations$USAFID %in% most_representative_stations$USAFID, "blue", "red"),
+                   radius = 5,
+                   popup = ~paste("Station:", USAFID, "<br>State:", STATE))
+
+map
 ```
 
 Knit the doc and save it on GitHub.

@@ -1,5 +1,6 @@
 Lab 05 - Data Wrangling
 ================
+Ella Hugie
 
 # Learning goals
 
@@ -100,6 +101,7 @@ the MET data.
 
 ``` r
 library("data.table")
+library("leaflet")
 fn <- "https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz"
 if (!file.exists("E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz"))
   download.file(fn, destfile = "E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz")
@@ -113,6 +115,19 @@ met <- data.table::fread("met_all_2023.gz")
     to download programmatically), and also the station data. For the
     latter, you can use the code we used during lecture to pre-process
     the stations data:
+
+``` r
+download.file(
+  "https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz",
+  destfile = "met_all_2023.gz",
+  method   = "curl",
+  timeout  = 60
+  )
+
+met <- data.table::fread("met_all_2023.gz")
+met$lat <- met$lat / 1000
+met$lon <- met$lon / 1000
+```
 
 ``` r
 # Download the data
@@ -205,45 +220,18 @@ median_stations <- met[, .SD[which.min(abs(euclidean_distance - median(euclidean
 
 # if a tie, select the one with the lowest latitude
 most_representative_stations <- median_stations[, .SD[which.min(lat)], by = STATE]
+most_representative_stations <- most_representative_stations[, .(USAFID, WBAN, STATE, lat, lon)]
 
 head(most_representative_stations)
 ```
 
-    ##    STATE USAFID  WBAN year month day hour min   lat     lon elev wind.dir
-    ## 1:    CA 720267 23224 2023     6   1   NA  15 38955 -121081  467      190
-    ## 2:    TX 722588 13926 2023     6   1   NA  15 33068  -96065  163      110
-    ## 3:    MI 726375 94817 2023     6   1   NA  53 42663  -83410  299       NA
-    ## 4:    SC 720596   189 2023     6   1   NA  15 34300  -81633  173       NA
-    ## 5:    IL 722089 94959 2023     6   1   NA  15 40933  -90433  233      170
-    ## 6:    MO 720306 53879 2023     6   1   NA  53 38958  -94371  306      180
-    ##    wind.dir.qc wind.type.code wind.sp wind.sp.qc ceiling.ht ceiling.ht.qc
-    ## 1:           5              N      31          5      22000             5
-    ## 2:           5              N      26          5      22000             5
-    ## 3:           9              V      26          5      22000             5
-    ## 4:           9              C      NA          5      22000             5
-    ## 5:           5              N      31          5      22000             5
-    ## 6:           5              N      21          5      22000             5
-    ##    ceiling.ht.method sky.cond vis.dist vis.dist.qc vis.var vis.var.qc temp
-    ## 1:                 9        N    14484           5       N          5  230
-    ## 2:                 9        N    11265           5       N          5  291
-    ## 3:                 9        N    16093           5       N          5  270
-    ## 4:                 9        N    16093           5       N          5  220
-    ## 5:                 9        N    16093           5       N          5  297
-    ## 6:                 9        N    16093           5       N          5  250
-    ##    temp.qc dew.point dew.point.qc atm.press atm.press.qc CTRY
-    ## 1:       5       130            5        NA            9   US
-    ## 2:       5       196            5        NA            9   US
-    ## 3:       7       100            7        NA            9   US
-    ## 4:       5       170            5        NA            9   US
-    ## 5:       5       148            5        NA            9   US
-    ## 6:       5       189            5     10116            5   US
-    ##    euclidean_distance
-    ## 1:           2805.385
-    ## 2:           2809.133
-    ## 3:           1727.623
-    ## 4:           1070.512
-    ## 5:           1706.955
-    ## 6:           1824.187
+    ##    USAFID  WBAN STATE    lat      lon
+    ## 1: 720267 23224    CA 38.955 -121.081
+    ## 2: 722588 13926    TX 33.068  -96.065
+    ## 3: 726375 94817    MI 42.663  -83.410
+    ## 4: 720596   189    SC 34.300  -81.633
+    ## 5: 722089 94959    IL 40.933  -90.433
+    ## 6: 720306 53879    MO 38.958  -94.371
 
 Knit the doc and save it on GitHub.
 
@@ -254,6 +242,57 @@ mid-point of the state. Combining these with the stations you identified
 in the previous question, use `leaflet()` to visualize all ~100 points
 in the same figure, applying different colors for those identified in
 this question.
+
+``` r
+# converting lat and lon columns to numeric
+met$lat <- as.numeric(met$lat)
+met$lon <- as.numeric(met$lon)
+
+# removing na rows
+met <- met[!is.na(met$lat) & !is.na(met$lon), ]
+```
+
+``` r
+# calculating midpoint of each state
+midpoints <- met[, .(mid_lat = mean(lat), mid_lon = mean(lon)), by = STATE]
+
+euclidean_distance <- function(lat1, lon1, lat2, lon2) {
+  sqrt((lat1 - lat2)^2 + (lon1 - lon2)^2)
+}
+
+# finding closest station to the midpoint
+find_closest_station <- function(mid_lat, mid_lon, stations) {
+  distances <- euclidean_distance(stations$lat, stations$lon, mid_lat, mid_lon)
+  closest_index <- which.min(distances)
+  closest_station <- stations[closest_index, ]
+  return(closest_station)
+}
+
+closest_stations <- lapply(1:nrow(midpoints), function(i) {
+  state_midpoint <- midpoints[i, ]
+  state_code <- state_midpoint$STATE
+  state_stations <- met[STATE == state_code]
+  closest_station <- find_closest_station(state_midpoint$mid_lat, state_midpoint$mid_lon, state_stations)
+  return(closest_station[, .(USAFID, WBAN, STATE, lat, lon)])  # Select only the columns you need
+})
+
+# combine midpoint stations with previously identified stations
+all_stations <- rbind(most_representative_stations, do.call(rbind, closest_stations))
+
+map <- leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(data = all_stations, 
+                   lat = ~lat, 
+                   lng = ~lon,
+                   color = ifelse(all_stations$USAFID %in% most_representative_stations$USAFID, "blue", "red"),
+                   radius = 5,
+                   popup = ~paste("Station:", USAFID, "<br>State:", STATE))
+
+map
+```
+
+<div class="leaflet html-widget html-fill-item" id="htmlwidget-77e7d7390cf919f74c2b" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-77e7d7390cf919f74c2b">{"x":{"options":{"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addTiles","args":["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",null,null,{"minZoom":0,"maxZoom":18,"tileSize":256,"subdomains":"abc","errorTileUrl":"","tms":false,"noWrap":false,"zoomOffset":0,"zoomReverse":false,"opacity":1,"zIndex":1,"detectRetina":false,"attribution":"&copy; <a href=\"https://openstreetmap.org/copyright/\">OpenStreetMap<\/a>,  <a href=\"https://opendatacommons.org/licenses/odbl/\">ODbL<\/a>"}]},{"method":"addCircleMarkers","args":[[38.955,33.068,42.663,34.3,40.933,38.958,34.545,45.417,46.683,34.272,44.123,31.356,40.948,35.937,39.143,42.219,40.238,41.964,46.375,42.887,38.38,39.417,35.3,34.65,41.444,30.521,37.09,28.483,41.563,40.683,36.45,39.072,48.301,44.567,38.533,33.873,41.483,39.183,38.417,44.016,36.056,42.57,41.53,42.555,38.69,43.627,44.05,47.326,36.333,31.106,43.622,33.921,39.835,38.096,35.257,44.095,47.28,32.64,45.949,33.178,40.711,35.582,37.358,41.691,40.849,40.967,44.894,44.359,39,38.981,33.612,35.358,43.062,30.558,37.578,28.474,40.28,40.277,35.003,38.068,48.39,44.205,39.05,32.32,41.51,38.05,40.219,44.382,36.009,42.207,41.597,42.191,39.133,43.567,44.798,47.054],[-121.081,-96.065,-83.41,-81.633,-90.43300000000001,-94.371,-94.203,-123.817,-122.983,-83.83,-93.261,-85.751,-87.18300000000001,-77.547,-78.14400000000001,-92.026,-75.55500000000001,-100.568,-117.015,-90.236,-81.59099999999999,-77.383,-112.2,-98.40000000000001,-106.827,-90.41800000000001,-84.069,-80.56699999999999,-83.477,-74.169,-105.666,-95.626,-102.406,-72.017,-106.933,-88.48999999999999,-73.133,-119.733,-110.7,-97.086,-85.53100000000001,-77.714,-71.283,-71.75700000000001,-75.36199999999999,-72.30500000000001,-70.283,-106.948,-119.95,-98.196,-84.73699999999999,-80.801,-88.866,-92.553,-93.095,-121.2,-121.34,-83.592,-94.34699999999999,-86.782,-86.375,-79.101,-78.438,-93.566,-77.849,-98.31699999999999,-116.099,-89.837,-80.274,-76.922,-111.923,-96.943,-108.447,-92.099,-84.77,-82.45399999999999,-83.11499999999999,-74.816,-105.662,-97.861,-100.024,-72.565,-105.516,-90.078,-72.828,-117.09,-111.723,-100.286,-86.52,-75.98,-71.41200000000001,-71.173,-75.467,-71.43300000000001,-68.819,-109.457],5,null,null,{"interactive":true,"className":"","stroke":true,"color":["blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red"],"weight":5,"opacity":0.5,"fill":true,"fillColor":["blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","blue","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red"],"fillOpacity":0.2},null,null,["Station: 720267 <br>State: CA","Station: 722588 <br>State: TX","Station: 726375 <br>State: MI","Station: 720596 <br>State: SC","Station: 722089 <br>State: IL","Station: 720306 <br>State: MO","Station: 720172 <br>State: AR","Station: 720202 <br>State: OR","Station: 720254 <br>State: WA","Station: 722185 <br>State: GA","Station: 726568 <br>State: MN","Station: 722239 <br>State: AL","Station: 744660 <br>State: IN","Station: 720864 <br>State: NC","Station: 724053 <br>State: VA","Station: 720326 <br>State: IA","Station: 725109 <br>State: PA","Station: 722211 <br>State: NE","Station: 727830 <br>State: ID","Station: 726507 <br>State: WI","Station: 724140 <br>State: WV","Station: 722081 <br>State: MD","Station: 720635 <br>State: AZ","Station: 723550 <br>State: OK","Station: 720521 <br>State: WY","Station: 722312 <br>State: LA","Station: 724243 <br>State: KY","Station: 747940 <br>State: FL","Station: 724287 <br>State: OH","Station: 725020 <br>State: NJ","Station: 723663 <br>State: NM","Station: 724560 <br>State: KS","Station: 720909 <br>State: ND","Station: 720492 <br>State: VT","Station: 724677 <br>State: CO","Station: 746941 <br>State: MS","Station: 725029 <br>State: CT","Station: 720549 <br>State: NV","Station: 724733 <br>State: UT","Station: 720624 <br>State: SD","Station: 723274 <br>State: TN","Station: 724988 <br>State: NY","Station: 725079 <br>State: RI","Station: 725107 <br>State: MA","Station: 724093 <br>State: DE","Station: 726116 <br>State: NH","Station: 726184 <br>State: ME","Station: 727684 <br>State: MT","Station: 747020 <br>State: CA","Station: 720647 <br>State: TX","Station: 725424 <br>State: MI","Station: 723105 <br>State: SC","Station: 725316 <br>State: IL","Station: 724459 <br>State: MO","Station: 723429 <br>State: AR","Station: 720638 <br>State: OR","Station: 727815 <br>State: WA","Station: 722175 <br>State: GA","Station: 726578 <br>State: MN","Station: 722300 <br>State: AL","Station: 720961 <br>State: IN","Station: 722201 <br>State: NC","Station: 724017 <br>State: VA","Station: 725466 <br>State: IA","Station: 725128 <br>State: PA","Station: 725520 <br>State: NE","Station: 725864 <br>State: ID","Station: 726452 <br>State: WI","Station: 720328 <br>State: WV","Station: 722244 <br>State: MD","Station: 722789 <br>State: AZ","Station: 722187 <br>State: OK","Station: 726720 <br>State: WY","Station: 720468 <br>State: LA","Station: 720448 <br>State: KY","Station: 722014 <br>State: FL","Station: 720928 <br>State: OH","Station: 724095 <br>State: NJ","Station: 722677 <br>State: NM","Station: 724506 <br>State: KS","Station: 720867 <br>State: ND","Station: 726145 <br>State: VT","Station: 726396 <br>State: CO","Station: 722350 <br>State: MS","Station: 725027 <br>State: CT","Station: 724855 <br>State: NV","Station: 725724 <br>State: UT","Station: 726560 <br>State: SD","Station: 723273 <br>State: TN","Station: 725150 <br>State: NY","Station: 725074 <br>State: RI","Station: 725098 <br>State: MA","Station: 724088 <br>State: DE","Station: 726155 <br>State: NH","Station: 726070 <br>State: ME","Station: 726776 <br>State: MT"],null,null,{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]}],"limits":{"lat":[28.474,48.39],"lng":[-123.817,-68.819]}},"evals":[],"jsHooks":[]}</script>
 
 Knit the doc and save it on GitHub.
 
