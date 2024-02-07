@@ -7,6 +7,10 @@ output:
 link-citations: yes
 ---
 
+```{r setup, include=FALSE}
+setwd("E:/UofT/Year 3/JSC370/Lab5")
+```
+
 # Learning goals
 
 - Use the `merge()` function to join two datasets.
@@ -90,16 +94,18 @@ Once you are done setting up the project, you can now start working with the MET
 
 1. Load the `data.table` (and the `dtplyr` and `dplyr` packages if you plan to work with those).
 
-```{r, eval=FALSE}
+```{r}
+library("data.table")
 fn <- "https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz"
-if (!file.exists("met_all_2023.gz"))
-  download.file(fn, destfile = "met_all_2023.gz")
+if (!file.exists("E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz"))
+  download.file(fn, destfile = "E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz")
 met <- data.table::fread("met_all_2023.gz")
 ```
 
 2. Load the met data from https://github.com/JSC370/JSC370-2024/main/data/met_all_2023.gz or  (Use https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz to download programmatically), and also the station data. For the latter, you can use the code we used during lecture to pre-process the stations data:
 
-```{r stations-data, eval = FALSE}
+```{r stations-data}
+
 # Download the data
 stations <- fread("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv")
 stations[, USAF := as.integer(USAF)]
@@ -122,13 +128,49 @@ stations <- stations[n == 1,][, n := NULL]
 
 3. Merge the data as we did during the lecture.
 
+```{r}
+# merging data
+met <- merge(
+  # Data
+  x     = met,      
+  y     = stations, 
+  # List of variables to match
+  by.x  = "USAFID",
+  by.y  = "USAF", 
+  # Which obs to keep?
+  all.x = TRUE,      
+  all.y = FALSE
+  )
+
+# check top rows
+head(met[, list(USAFID, WBAN, STATE)], n = 4)
+```
+
 ## Question 1: Representative station for the US
 
 Across all weather stations, what is the median station in terms of temperature, wind speed, and atmospheric pressure? Look for the three weather stations that best represent continental US using the `quantile()` function. Do these three coincide?
 
 ```{r}
+# calculating median values for temperature, wind speed, and atmospheric pressure
+quantile_temp <- quantile(met$temp, probs = 0.5, na.rm = TRUE)
+quantile_wind_sp <- quantile(met$wind.sp, probs = 0.5, na.rm = TRUE)
+quantile_atm_press <- quantile(met$atm.press, probs = 0.5, na.rm = TRUE)
 
+# finding stations closest to these medians
+station_temp_median <- met$USAFID[which.min(abs(met$temp - quantile_temp))]
+station_wind_sp_median <- met$USAFID[which.min(abs(met$wind.sp - quantile_wind_sp))]
+station_atm_press_median <- met$USAFID[which.min(abs(met$atm.press - quantile_atm_press))]
+
+# median values and their corresponding station
+cat("Median Quantile Temperature:", quantile_temp, "\n")
+cat("Median Quantile Wind Speed:", quantile_wind_sp, "\n")
+cat("Median Quantile Atmospheric Pressure:", quantile_atm_press, "\n")
+cat("\n")
+cat("Station representing the median Quantile Temperature:", station_temp_median, "\n")
+cat("Station representing the median Quantile Wind Speed:", station_wind_sp_median, "\n")
+cat("Station representing the median Quantile Atmospheric Pressure:", station_atm_press_median, "\n")
 ```
+Yes, these three variables' median values do all coincide at the same station 690150. This is particularly interesting because it indicates a possible relationship between these three variables temperature, wind speed, and atmospheric pressure.
 
 Knit the document, commit your changes, and save it on GitHub. Don't forget to add `README.md` to the tree, the first time you render it.
 
