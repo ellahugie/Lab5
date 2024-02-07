@@ -94,7 +94,7 @@ Once you are done setting up the project, you can now start working with the MET
 
 1. Load the `data.table` (and the `dtplyr` and `dplyr` packages if you plan to work with those).
 
-```{r}
+```{r echo=TRUE}
 library("data.table")
 fn <- "https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz"
 if (!file.exists("E:/UofT/Year 3/JSC370/Lab5/met_all_2023.gz"))
@@ -104,7 +104,7 @@ met <- data.table::fread("met_all_2023.gz")
 
 2. Load the met data from https://github.com/JSC370/JSC370-2024/main/data/met_all_2023.gz or  (Use https://raw.githubusercontent.com/JSC370/JSC370-2024/main/data/met_all_2023.gz to download programmatically), and also the station data. For the latter, you can use the code we used during lecture to pre-process the stations data:
 
-```{r stations-data}
+```{r stations-data, echo=TRUE, message=FALSE, warning=FALSE}
 
 # Download the data
 stations <- fread("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv")
@@ -128,7 +128,7 @@ stations <- stations[n == 1,][, n := NULL]
 
 3. Merge the data as we did during the lecture.
 
-```{r}
+```{r echo=TRUE}
 # merging data
 met <- merge(
   # Data
@@ -150,7 +150,7 @@ head(met[, list(USAFID, WBAN, STATE)], n = 4)
 
 Across all weather stations, what is the median station in terms of temperature, wind speed, and atmospheric pressure? Look for the three weather stations that best represent continental US using the `quantile()` function. Do these three coincide?
 
-```{r}
+```{r echo=FALSE}
 # calculating median values for temperature, wind speed, and atmospheric pressure
 quantile_temp <- quantile(met$temp, probs = 0.5, na.rm = TRUE)
 quantile_wind_sp <- quantile(met$wind.sp, probs = 0.5, na.rm = TRUE)
@@ -178,8 +178,17 @@ Knit the document, commit your changes, and save it on GitHub. Don't forget to a
 
 Just like the previous question, you are asked to identify what is the most representative, the median, station per state. This time, instead of looking at one variable at a time, look at the euclidean distance. If multiple stations show in the median, select the one located at the lowest latitude.
 
-```{r}
+```{r echo=TRUE}
+# calculate Euclidean distance by state
+met[, euclidean_distance := sqrt((lat - mean(lat))^2 + (lon - mean(lon))^2), by = STATE]
 
+# find the median station for each state
+median_stations <- met[, .SD[which.min(abs(euclidean_distance - median(euclidean_distance)))], by = STATE]
+
+# if a tie, select the one with the lowest latitude
+most_representative_stations <- median_stations[, .SD[which.min(lat)], by = STATE]
+
+head(most_representative_stations)
 ```
 
 Knit the doc and save it on GitHub.

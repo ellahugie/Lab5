@@ -118,11 +118,7 @@ met <- data.table::fread("met_all_2023.gz")
 # Download the data
 stations <- fread("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv")
 stations[, USAF := as.integer(USAF)]
-```
 
-    ## Warning in eval(jsub, SDenv, parent.frame()): NAs introduced by coercion
-
-``` r
 # Dealing with NAs and 999999
 stations[, USAF   := fifelse(USAF == 999999, NA_integer_, USAF)]
 stations[, CTRY   := fifelse(CTRY == "", NA_character_, CTRY)]
@@ -172,54 +168,15 @@ temperature, wind speed, and atmospheric pressure? Look for the three
 weather stations that best represent continental US using the
 `quantile()` function. Do these three coincide?
 
-``` r
-# calculating median values for temperature, wind speed, and atmospheric pressure
-quantile_temp <- quantile(met$temp, probs = 0.5, na.rm = TRUE)
-quantile_wind_sp <- quantile(met$wind.sp, probs = 0.5, na.rm = TRUE)
-quantile_atm_press <- quantile(met$atm.press, probs = 0.5, na.rm = TRUE)
-
-# finding stations closest to these medians
-station_temp_median <- met$USAFID[which.min(abs(met$temp - quantile_temp))]
-station_wind_sp_median <- met$USAFID[which.min(abs(met$wind.sp - quantile_wind_sp))]
-station_atm_press_median <- met$USAFID[which.min(abs(met$atm.press - quantile_atm_press))]
-
-# median values and their corresponding station
-cat("Median Quantile Temperature:", quantile_temp, "\n")
-```
-
     ## Median Quantile Temperature: 217
-
-``` r
-cat("Median Quantile Wind Speed:", quantile_wind_sp, "\n")
-```
 
     ## Median Quantile Wind Speed: 31
 
-``` r
-cat("Median Quantile Atmospheric Pressure:", quantile_atm_press, "\n")
-```
-
     ## Median Quantile Atmospheric Pressure: 10117
-
-``` r
-cat("\n")
-```
-
-``` r
-cat("Station representing the median Quantile Temperature:", station_temp_median, "\n")
-```
 
     ## Station representing the median Quantile Temperature: 690150
 
-``` r
-cat("Station representing the median Quantile Wind Speed:", station_wind_sp_median, "\n")
-```
-
     ## Station representing the median Quantile Wind Speed: 690150
-
-``` r
-cat("Station representing the median Quantile Atmospheric Pressure:", station_atm_press_median, "\n")
-```
 
     ## Station representing the median Quantile Atmospheric Pressure: 690150
 
@@ -238,6 +195,55 @@ most representative, the median, station per state. This time, instead
 of looking at one variable at a time, look at the euclidean distance. If
 multiple stations show in the median, select the one located at the
 lowest latitude.
+
+``` r
+# calculate Euclidean distance by state
+met[, euclidean_distance := sqrt((lat - mean(lat))^2 + (lon - mean(lon))^2), by = STATE]
+
+# find the median station for each state
+median_stations <- met[, .SD[which.min(abs(euclidean_distance - median(euclidean_distance)))], by = STATE]
+
+# if a tie, select the one with the lowest latitude
+most_representative_stations <- median_stations[, .SD[which.min(lat)], by = STATE]
+
+head(most_representative_stations)
+```
+
+    ##    STATE USAFID  WBAN year month day hour min   lat     lon elev wind.dir
+    ## 1:    CA 720267 23224 2023     6   1   NA  15 38955 -121081  467      190
+    ## 2:    TX 722588 13926 2023     6   1   NA  15 33068  -96065  163      110
+    ## 3:    MI 726375 94817 2023     6   1   NA  53 42663  -83410  299       NA
+    ## 4:    SC 720596   189 2023     6   1   NA  15 34300  -81633  173       NA
+    ## 5:    IL 722089 94959 2023     6   1   NA  15 40933  -90433  233      170
+    ## 6:    MO 720306 53879 2023     6   1   NA  53 38958  -94371  306      180
+    ##    wind.dir.qc wind.type.code wind.sp wind.sp.qc ceiling.ht ceiling.ht.qc
+    ## 1:           5              N      31          5      22000             5
+    ## 2:           5              N      26          5      22000             5
+    ## 3:           9              V      26          5      22000             5
+    ## 4:           9              C      NA          5      22000             5
+    ## 5:           5              N      31          5      22000             5
+    ## 6:           5              N      21          5      22000             5
+    ##    ceiling.ht.method sky.cond vis.dist vis.dist.qc vis.var vis.var.qc temp
+    ## 1:                 9        N    14484           5       N          5  230
+    ## 2:                 9        N    11265           5       N          5  291
+    ## 3:                 9        N    16093           5       N          5  270
+    ## 4:                 9        N    16093           5       N          5  220
+    ## 5:                 9        N    16093           5       N          5  297
+    ## 6:                 9        N    16093           5       N          5  250
+    ##    temp.qc dew.point dew.point.qc atm.press atm.press.qc CTRY
+    ## 1:       5       130            5        NA            9   US
+    ## 2:       5       196            5        NA            9   US
+    ## 3:       7       100            7        NA            9   US
+    ## 4:       5       170            5        NA            9   US
+    ## 5:       5       148            5        NA            9   US
+    ## 6:       5       189            5     10116            5   US
+    ##    euclidean_distance
+    ## 1:           2805.385
+    ## 2:           2809.133
+    ## 3:           1727.623
+    ## 4:           1070.512
+    ## 5:           1706.955
+    ## 6:           1824.187
 
 Knit the doc and save it on GitHub.
 
