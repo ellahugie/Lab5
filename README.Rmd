@@ -119,6 +119,7 @@ download.file(
 met <- data.table::fread("met_all_2023.gz")
 met$lat <- met$lat / 1000
 met$lon <- met$lon / 1000
+met$temp <- met$temp / 10
 ```
 
 
@@ -279,7 +280,17 @@ Start by computing the states' average temperature. Use that measurement to clas
 - High: temp >= 25
 
 ```{r}
+# find average temperature for each state
+average_temp_by_state <- met[, .(avg_temp = mean(temp, na.rm = TRUE)), by = STATE]
 
+# classify states
+average_temp_by_state[, temp_level := cut(avg_temp,
+                                         breaks = c(-Inf, 20, 25, Inf),
+                                         labels = c("Low", "Mid", "High"),
+                                         right = FALSE)]
+
+# look at first few rows
+head(average_temp_by_state)
 ```
 
 Once you are done with that, you can compute the following:
@@ -293,7 +304,26 @@ Once you are done with that, you can compute the following:
 All by the levels described before.
 
 ```{r}
+# Merge the temperature level information back to the met dataset and assign it to met_merge
+met_merge <- merge(met, average_temp_by_state, by = "STATE")
+setDT(met_merge)
 
+# Ensure 'temp_level' is a factor
+met_merge$temp_level <- factor(met_merge$temp_level, levels = c("Low", "Mid", "High"))
+
+# Compute statistics by temperature levels
+summary_table <- met_merge[, .(
+  Number_of_Entries = .N,                                # Number of entries (records)
+  Number_of_NA_Entries = sum(is.na(temp)),               # Number of NA entries
+  Number_of_Stations = length(unique(USAFID)),           # Number of stations
+  Number_of_States = length(unique(STATE)),              # Number of states
+  Mean_Temperature = mean(temp, na.rm = TRUE),           # Mean temperature
+  Mean_Wind_Speed = mean(wind.sp, na.rm = TRUE),         # Mean wind-speed
+  Mean_Atmospheric_Pressure = mean(atm.press, na.rm = TRUE) # Mean atmospheric pressure
+), by = temp_level]
+
+# Print the summary table
+print(summary_table)
 ```
 
 Knit the document, commit your changes, and push them to GitHub. 
