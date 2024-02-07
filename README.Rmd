@@ -148,7 +148,7 @@ stations <- stations[n == 1,][, n := NULL]
 
 3. Merge the data as we did during the lecture.
 
-```{r echo=TRUE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 # merging data
 met <- merge(
   # Data
@@ -170,7 +170,7 @@ head(met[, list(USAFID, WBAN, STATE)], n = 4)
 
 Across all weather stations, what is the median station in terms of temperature, wind speed, and atmospheric pressure? Look for the three weather stations that best represent continental US using the `quantile()` function. Do these three coincide?
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # calculating median values for temperature, wind speed, and atmospheric pressure
 quantile_temp <- quantile(met$temp, probs = 0.5, na.rm = TRUE)
 quantile_wind_sp <- quantile(met$wind.sp, probs = 0.5, na.rm = TRUE)
@@ -198,7 +198,7 @@ Knit the document, commit your changes, and save it on GitHub. Don't forget to a
 
 Just like the previous question, you are asked to identify what is the most representative, the median, station per state. This time, instead of looking at one variable at a time, look at the euclidean distance. If multiple stations show in the median, select the one located at the lowest latitude.
 
-```{r echo=TRUE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 # calculate Euclidean distance by state
 met[, euclidean_distance := sqrt((lat - mean(lat))^2 + (lon - mean(lon))^2), by = STATE]
 
@@ -218,7 +218,7 @@ Knit the doc and save it on GitHub.
 
 For each state, identify what is the station that is closest to the mid-point of the state. Combining these with the stations you identified in the previous question, use `leaflet()` to visualize all ~100 points in the same figure, applying different colors for those identified in this question.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # converting lat and lon columns to numeric
 met$lat <- as.numeric(met$lat)
 met$lon <- as.numeric(met$lon)
@@ -228,7 +228,7 @@ met <- met[!is.na(met$lat) & !is.na(met$lon), ]
 ```
 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # calculating midpoint of each state
 midpoints <- met[, .(mid_lat = mean(lat), mid_lon = mean(lon)), by = STATE]
 
@@ -279,7 +279,7 @@ Start by computing the states' average temperature. Use that measurement to clas
 - Mid: temp >= 20 and temp < 25
 - High: temp >= 25
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # find average temperature for each state
 average_temp_by_state <- met[, .(avg_temp = mean(temp, na.rm = TRUE)), by = STATE]
 
@@ -303,15 +303,14 @@ Once you are done with that, you can compute the following:
 
 All by the levels described before.
 
-```{r}
-# Merge the temperature level information back to the met dataset and assign it to met_merge
+```{r message=FALSE, warning=FALSE}
+# merge with met to recover information
 met_merge <- merge(met, average_temp_by_state, by = "STATE")
 setDT(met_merge)
 
-# Ensure 'temp_level' is a factor
 met_merge$temp_level <- factor(met_merge$temp_level, levels = c("Low", "Mid", "High"))
 
-# Compute statistics by temperature levels
+# computer statistics
 summary_table <- met_merge[, .(
   Number_of_Entries = .N,                                # Number of entries (records)
   Number_of_NA_Entries = sum(is.na(temp)),               # Number of NA entries
@@ -322,8 +321,7 @@ summary_table <- met_merge[, .(
   Mean_Atmospheric_Pressure = mean(atm.press, na.rm = TRUE) # Mean atmospheric pressure
 ), by = temp_level]
 
-# Print the summary table
-print(summary_table)
+summary_table
 ```
 
 Knit the document, commit your changes, and push them to GitHub. 
@@ -337,9 +335,40 @@ Let's practice running regression models with smooth functions on X. We need the
 
 - fit both a linear model and a spline model (use `gam()` with a cubic regression spline on wind speed). Summarize and plot the results from the models and interpret which model is the best fit and why.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
+#install.packages("mgcv")
+library(mgcv)
+library(ggplot2)
 
+met_median <- met[, .(
+  median_temperature = median(temp, na.rm = TRUE),
+  median_wind_speed = median(wind.sp, na.rm = TRUE)
+), by = .(USAFID)]
+
+# scatterplot of median temperature (y) vs. median wind speed (x)
+ggplot(data = met_median, aes(x = median_wind_speed, y = median_temperature)) +
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Add linear regression line
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), color = "red") +  # Add smooth line with cubic regression spline
+  labs(x = "Median Wind Speed", y = "Median Temperature") +
+  theme_minimal()
+
+# linear model and a spline model using gam()
+linear_model <- lm(median_temperature ~ median_wind_speed, data = met_median)
+spline_model <- gam(median_temperature ~ s(median_wind_speed, bs = "cs"), data = met_median)
+
+# summarize the results
+summary(linear_model)
+summary(spline_model)
 ```
+The linear model is: median_temperature = 18.79692 + 0.07430 * median_wind_speed
+
+Note that the coefficient of median_wind_speed is statistically significant meaning there is likely a relationship between median_wind_speed and median_temperature. Similarly, the F-statistic is very small indicating this model is overall statistically significant. However, the R2 value of 0.01562 is extremely low meaning that only about 1.562% of the variability in median temperature is explained by median wind speed.
+
+The spline model suggests a nonlinear relationship between median temperature and median wind speed. This model has a slightly higher R2 value of 0.0319 indicating this model better explain the variability in median temperature. Also, the degrees of freedom 6.985 indicated that the spline is fairly flexible.
+
+Overall, the spline appears to be a better fit due to its flexibility and being able to explain more variation in median temperature, our variable of interest. However, it should be noted that neither model does a particularly good job and potentially another model should be fitted to better explain the variation in median temperature.
+
 
 ## Deliverables
 
